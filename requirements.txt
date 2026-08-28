@@ -1,0 +1,11 @@
+google-api-python-client
+pandas
+python-dotenv
+tqdm
+markdown
+requests
+streamlit
+google-genai
+pydantic
+python-pptx
+Pillow

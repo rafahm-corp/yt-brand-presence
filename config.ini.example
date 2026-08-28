@@ -1,0 +1,50 @@
+[Target]
+target_brand = 
+competitors = 
+
+[Category]
+category_theme = 
+search_queries = 
+max_results = 20
+max_comments_per_video = 30
+region_code = BR
+search_terms = 
+
+[Crawler]
+search_terms = 
+search_queries = 
+search_modifiers = review, opiniao, comparativo, dicas, vale a pena
+exclude_keywords = brinquedo, controle remoto, infantil, mini, rc, jogos, simulador
+min_view_count = 1000
+sort_by = relevance
+max_results = 50
+max_comments_per_video = 30
+region_code = BR
+video_type = both
+include_channels = 
+exclude_channels = 
+
+[Analysis]
+output_language = Portuguese
+pro_model_name = gemini-flash-latest
+flash_model_name = gemini-flash-latest
+fallback_model_name = gemini-3.6-flash
+requested_outputs = pdf,html,markdown
+additional_context = 
+
+[Multimodal]
+max_workers = 4
+worker_delay_seconds = 1.5
+worker_pacing_delay_sec = 1.5
+max_video_duration_seconds = 1800
+max_video_duration_minutes = 30
+enable_visual_analysis = true
+use_vertex_ai = false
+vertex_location = us-central1
+
+[Drive]
+folder_id = 
+resource_key = 
+
+[General]
+run_id = 
