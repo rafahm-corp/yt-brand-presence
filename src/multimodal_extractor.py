@@ -158,6 +158,7 @@ class VideoMultimodalExtractor:
         self.enable_agentic_video = multimodal_cfg.get("enable_agentic_video", True)
         self.use_vertex = multimodal_cfg.get("use_vertex_ai", True)
         self.vertex_location = multimodal_cfg.get("vertex_location", "us-central1")
+        self.max_results = max(config.getint("Category", "max_results", fallback=config.getint("Crawler", "max_results", fallback=30)), 30)
 
         # Models
         models = get_model_names(self.config_path)
@@ -603,7 +604,7 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
         videos_df: pd.DataFrame,
         target_brand: Optional[str] = None,
         competitors: Optional[List[str]] = None,
-        max_videos: int = 30,
+        max_videos: Optional[int] = None,
         max_workers: Optional[int] = None,
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -614,7 +615,7 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
             videos_df: DataFrame containing discovered video metadata.
             target_brand: Target brand name override.
             competitors: Competitors list override.
-            max_videos: Maximum number of videos to analyze (default 30, watches at least top 30).
+            max_videos: Maximum number of videos to analyze (default None -> self.max_results).
             max_workers: Concurrency limit (default from config, typically 4).
 
         Returns:
@@ -628,8 +629,9 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
         comps = competitors if competitors is not None else self.competitors
         workers = max_workers or self.max_workers
 
-        # Watch at least the top 30 videos if discovered
-        limit_v = max(max_videos, 30) if len(videos_df) >= 30 else len(videos_df)
+        # Watch at least the top 30 videos if discovered, up to max_videos or self.max_results
+        eff_max = max_videos if max_videos is not None else getattr(self, "max_results", 30)
+        limit_v = max(eff_max, 30) if len(videos_df) >= 30 else len(videos_df)
         subset_df = videos_df.head(limit_v).copy()
 
         tech_mode = "Agentic Video Understanding (Dynamic Frame & Audio Scanning)" if self.enable_agentic_video else "Static 1 FPS Ingestion"

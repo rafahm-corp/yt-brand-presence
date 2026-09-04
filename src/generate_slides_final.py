@@ -34,7 +34,7 @@ def generate_image(prompt, output_path, client=None, config_path=None):
     if client is None:
         client = create_genai_client(config_path=config_path)
     
-    models_to_try = ["gemini-3.1-flash-image-preview", "imagen-3.0-generate-002", "gemini-2.5-flash"]
+    models_to_try = ["gemini-2.5-flash-image", "gemini-3.1-flash-image", "gemini-3-pro-image"]
     for model_name in models_to_try:
         for attempt in range(2):
             try:
@@ -44,12 +44,25 @@ def generate_image(prompt, output_path, client=None, config_path=None):
                 )
                 
                 for part in response.parts:
-                    if part.inline_data is not None:
-                        image = part.as_image()
-                        image.save(output_path)
+                    if hasattr(part, "as_image") and callable(part.as_image):
+                        try:
+                            img = part.as_image()
+                            if img:
+                                img.save(output_path)
+                                return True
+                        except Exception:
+                            pass
+                    if hasattr(part, "inline_data") and part.inline_data is not None:
+                        from io import BytesIO
+                        data = part.inline_data.data
+                        if isinstance(data, str):
+                            import base64
+                            data = base64.b64decode(data)
+                        img = Image.open(BytesIO(data))
+                        img.save(output_path)
                         return True
             except Exception as e:
-                if "503" in str(e) or "UNAVAILABLE" in str(e):
+                if "503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e):
                     time.sleep(3)
                 else:
                     break
@@ -83,7 +96,15 @@ def run_slide_generation(config_path="config.ini"):
     run_dir = os.path.join(config_dir, "outputs", run_id)
     report_file = os.path.join(run_dir, f"{target_brand}_final_analysis_report.md")
     if not os.path.exists(report_file):
+        report_file = os.path.join(run_dir, f"{safe_brand}_final_analysis_report.md")
+    if not os.path.exists(report_file):
         report_file = os.path.join(run_dir, f"{target_brand}_brand_presence_report.md")
+    if not os.path.exists(report_file):
+        report_file = os.path.join(run_dir, f"{safe_brand}_brand_presence_report.md")
+    if not os.path.exists(report_file):
+        md_cands = glob.glob(os.path.join(run_dir, "*_final_analysis_report.md")) or glob.glob(os.path.join(run_dir, "*_report.md")) or glob.glob(os.path.join(run_dir, "*.md"))
+        if md_cands:
+            report_file = md_cands[0]
         
     output_dir = os.path.join(run_dir, "presentation_structured")
     images_dir = os.path.join(output_dir, "images_full")
