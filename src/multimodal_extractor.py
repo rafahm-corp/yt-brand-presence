@@ -83,6 +83,7 @@ class SingleVideoMultimodalAnalysis(BaseModel):
     spoken_key_claims: List[str] = Field(default_factory=list, description="Key spoken claims or quotes from the video")
     creator_editorial_stance: Optional[str] = Field(default=None, description="Alias for creator_stance")
     engagement_driver_assessment: Optional[str] = Field(default=None, description="Assessment of engagement drivers for this video")
+    agentic_video_used: bool = Field(default=False, description="Whether Agentic Video Understanding was utilized")
     extraction_status: str = Field(default="SUCCESS", description="SUCCESS, METADATA_FALLBACK, or DURATION_EXCEEDED")
 
 
@@ -154,6 +155,7 @@ class VideoMultimodalExtractor:
         self.worker_delay_seconds = multimodal_cfg.get("worker_delay_seconds", 1.5)
         self.max_video_duration_seconds = multimodal_cfg.get("max_video_duration_seconds", 1800)
         self.enable_visual = multimodal_cfg.get("enable_visual_analysis", True)
+        self.enable_agentic_video = multimodal_cfg.get("enable_agentic_video", True)
         self.use_vertex = multimodal_cfg.get("use_vertex_ai", True)
         self.vertex_location = multimodal_cfg.get("vertex_location", "us-central1")
 
@@ -477,7 +479,7 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
         comps = competitors if competitors is not None else self.competitors
         c_theme = category_theme or self.category_theme
 
-        # 1. Attempt Multimodal Video Ingestion via URL Part
+        # 1. Attempt Multimodal Video Ingestion (Agentic Video Mode with Static Fallback)
         if url and self.enable_visual:
             prompt = self._construct_multimodal_prompt(video_meta, t_brand, comps, c_theme, metadata_only=False)
             if duration_sec > self.max_video_duration_seconds:
@@ -487,7 +489,46 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
                     f"Capping analysis to the first {max_mins} minutes."
                 )
                 prompt += f"\n\nIMPORTANT: The full video is {duration_sec} seconds long (~{duration_sec // 60} minutes). You MUST restrict your visual, spoken audio, brand appearance, and sentiment analysis strictly to the FIRST {max_mins} MINUTES (first 0 to {self.max_video_duration_seconds} seconds) of the video content."
+
+            # Layer 1: Agentic Video Understanding (Dynamic timeline navigation)
+            if self.enable_agentic_video:
+                try:
+                    logger.info(f"Analyzing video {video_id} using Agentic Video Understanding (dynamic scanning)...")
+                    video_part = types.Part(
+                        file_data=types.FileData(file_uri=url, mime_type="video/mp4"),
+                        media_processing=types.MediaProcessing.AGENTIC,
+                    )
+                    contents = [video_part, prompt]
+
+                    response = generate_content_with_retry(
+                        client=self.client,
+                        model=self.model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            temperature=0.2,
+                            response_mime_type="application/json",
+                            response_schema=SingleVideoMultimodalAnalysis,
+                        ),
+                        fallback_model=self.fallback_model_name,
+                        max_retries=3,
+                        retry_delay_sec=2.0,
+                    )
+                    resp_text = response.text if hasattr(response, "text") and response.text else ""
+                    if not resp_text and hasattr(response, "candidates") and response.candidates:
+                        for part in response.candidates[0].content.parts:
+                            if hasattr(part, "text") and part.text:
+                                resp_text += part.text
+                    analysis = self._parse_analysis_response(resp_text, video_meta)
+                    analysis.agentic_video_used = True
+                    return analysis
+                except Exception as e:
+                    logger.warning(
+                        f"Agentic video ingestion failed for {video_id} ({e}). Retrying with static multimodal ingestion..."
+                    )
+
+            # Layer 2: Static Video Multimodal Ingestion (1 FPS)
             try:
+                logger.info(f"Analyzing video {video_id} using static multimodal streaming (1 FPS)...")
                 video_part = types.Part.from_uri(file_uri=url, mime_type="video/mp4")
                 contents = [video_part, prompt]
 
@@ -504,13 +545,20 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
                     max_retries=3,
                     retry_delay_sec=2.0,
                 )
-                return self._parse_analysis_response(response.text, video_meta)
+                resp_text = response.text if hasattr(response, "text") and response.text else ""
+                if not resp_text and hasattr(response, "candidates") and response.candidates:
+                    for part in response.candidates[0].content.parts:
+                        if hasattr(part, "text") and part.text:
+                            resp_text += part.text
+                analysis = self._parse_analysis_response(resp_text, video_meta)
+                analysis.agentic_video_used = False
+                return analysis
             except Exception as e:
                 logger.warning(
-                    f"Multimodal URL streaming failed for {video_id} ({e}). Falling back to metadata-only extraction."
+                    f"Static multimodal streaming failed for {video_id} ({e}). Falling back to metadata-only extraction."
                 )
 
-        # 3. Fallback to Metadata-Only Extraction
+        # Layer 3: Fallback to Metadata-Only Extraction
         return self._analyze_video_metadata_only(video_meta, t_brand, comps, c_theme, status="METADATA_FALLBACK")
 
     def _analyze_video_metadata_only(
@@ -537,8 +585,14 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
                 max_retries=3,
                 retry_delay_sec=2.0,
             )
-            analysis = self._parse_analysis_response(response.text, video_meta)
+            resp_text = response.text if hasattr(response, "text") and response.text else ""
+            if not resp_text and hasattr(response, "candidates") and response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "text") and part.text:
+                        resp_text += part.text
+            analysis = self._parse_analysis_response(resp_text, video_meta)
             analysis.extraction_status = status
+            analysis.agentic_video_used = False
             return analysis
         except Exception as e:
             logger.error(f"Metadata extraction also failed for {video_meta.get('video_id')}: {e}")
@@ -549,17 +603,18 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
         videos_df: pd.DataFrame,
         target_brand: Optional[str] = None,
         competitors: Optional[List[str]] = None,
-        max_videos: int = 100,
+        max_videos: int = 30,
         max_workers: Optional[int] = None,
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Dispatches parallel multimodal analysis across discovered videos with worker pacing.
+        Ensures at least the top 30 videos are analyzed whenever available.
 
         Args:
             videos_df: DataFrame containing discovered video metadata.
             target_brand: Target brand name override.
             competitors: Competitors list override.
-            max_videos: Maximum number of videos to analyze (default 20).
+            max_videos: Maximum number of videos to analyze (default 30, watches at least top 30).
             max_workers: Concurrency limit (default from config, typically 4).
 
         Returns:
@@ -572,10 +627,15 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
         t_brand = target_brand or self.target_brand
         comps = competitors if competitors is not None else self.competitors
         workers = max_workers or self.max_workers
-        subset_df = videos_df.head(max_videos).copy()
 
+        # Watch at least the top 30 videos if discovered
+        limit_v = max(max_videos, 30) if len(videos_df) >= 30 else len(videos_df)
+        subset_df = videos_df.head(limit_v).copy()
+
+        tech_mode = "Agentic Video Understanding (Dynamic Frame & Audio Scanning)" if self.enable_agentic_video else "Static 1 FPS Ingestion"
         print(
-            f"\n--- [Stage 1] Ingestão Multimodal em Paralelo ({len(subset_df)} vídeos, {workers} threads, pacing={self.worker_delay_seconds}s) ---",
+            f"\n--- [Stage 1] Ingestão Multimodal em Paralelo ({len(subset_df)} vídeos, {workers} threads, pacing={self.worker_delay_seconds}s) ---"
+            f"\n    Tecnologia: {tech_mode} | Modelo: {self.model_name}",
             flush=True,
         )
 
@@ -633,6 +693,7 @@ Return ONLY valid JSON matching the SingleVideoMultimodalAnalysis schema.
                 "brand_appearances_count": len(a.brand_appearances),
                 "visual_appearances_count": visual_count,
                 "spoken_appearances_count": spoken_count,
+                "agentic_video_used": getattr(a, "agentic_video_used", False),
                 "extraction_status": a.extraction_status,
                 "transcript_text": transcript_composite,
                 "has_transcript": True,

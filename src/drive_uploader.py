@@ -258,9 +258,8 @@ def upload_run_outputs_to_drive(config_path="config.ini"):
         brand_name = config.get('Crawler', 'search_terms', fallback='Analysis')
         safe_brand_name = re.sub(r'\W+', '', brand_name.replace(' ', '_'))
         run_id = config.get('General', 'run_id', fallback=safe_brand_name)
-        
-        folder_id = os.getenv('DRIVE_FOLDER_ID', config.get('Drive', 'folder_id', fallback=None))
-        resource_key = os.getenv('DRIVE_RESOURCE_KEY', config.get('Drive', 'resource_key', fallback=None))
+        folder_id = (os.getenv('DRIVE_FOLDER_ID') or "").strip() or config.get('Drive', 'folder_id', fallback='1Q1oDloZ3pVboA384DNU4g9vL02ERqThL')
+        resource_key = (os.getenv('DRIVE_RESOURCE_KEY') or "").strip() or config.get('Drive', 'resource_key', fallback='0-UEy66XMGR6YJCtE4ho850A')
         
         if not folder_id:
             print("Warning: Drive folder_id not set in configuration. Skipping upload.", flush=True)

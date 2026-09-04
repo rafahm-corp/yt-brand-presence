@@ -5,7 +5,8 @@ tqdm
 markdown
 requests
 streamlit
-google-genai
+google-genai>=2.22.0
 pydantic
 python-pptx
 Pillow
+tabulate

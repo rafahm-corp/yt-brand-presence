@@ -59,7 +59,8 @@ if "config_initialized" not in st.session_state:
     st.session_state.min_view_count = int(get_config_val("Crawler", "min_view_count", "1000"))
     st.session_state.sort_by = get_config_val("Crawler", "sort_by", "relevance")
     st.session_state.video_type = get_config_val("Crawler", "video_type", "both")
-    st.session_state.max_results = int(get_config_val("Category", "max_results", "20"))
+    st.session_state.max_results = int(get_config_val("Category", "max_results", "30"))
+    st.session_state.enable_agentic_video = get_config_val("Multimodal", "enable_agentic_video", "true").lower() in ("true", "1", "yes")
     st.session_state.max_comments = int(get_config_val("Category", "max_comments_per_video", "30"))
     st.session_state.max_video_duration = int(get_config_val("Crawler", "max_video_duration_minutes", "30"))
     st.session_state.region_code = get_config_val("Category", "region_code", "BR")
@@ -72,7 +73,7 @@ if "config_initialized" not in st.session_state:
 
 def save_settings_to_config():
     save_config = configparser.ConfigParser(interpolation=None)
-    for sec in ["Target", "Category", "Crawler", "Analysis", "Drive", "General"]:
+    for sec in ["Target", "Category", "Crawler", "Analysis", "Multimodal", "Drive", "General"]:
         save_config.add_section(sec)
         
     save_config.set("Target", "target_brand", st.session_state.target_brand)
@@ -99,6 +100,19 @@ def save_settings_to_config():
     save_config.set("Analysis", "output_language", st.session_state.output_language)
     save_config.set("Analysis", "requested_outputs", ",".join(st.session_state.requested_outputs))
     save_config.set("Analysis", "additional_context", st.session_state.additional_context)
+    save_config.set("Analysis", "pro_model_name", "gemini-3.7-flash")
+    save_config.set("Analysis", "flash_model_name", "gemini-3.7-flash")
+    save_config.set("Analysis", "fallback_model_name", "gemini-3.6-flash")
+
+    save_config.set("Multimodal", "max_workers", "4")
+    save_config.set("Multimodal", "worker_delay_seconds", "1.5")
+    save_config.set("Multimodal", "worker_pacing_delay_sec", "1.5")
+    save_config.set("Multimodal", "max_video_duration_seconds", "1800")
+    save_config.set("Multimodal", "max_video_duration_minutes", "30")
+    save_config.set("Multimodal", "enable_visual_analysis", "true")
+    save_config.set("Multimodal", "enable_agentic_video", str(getattr(st.session_state, "enable_agentic_video", True)).lower())
+    save_config.set("Multimodal", "use_vertex_ai", "true")
+    save_config.set("Multimodal", "vertex_location", "us-central1")
     
     save_config.set("Drive", "folder_id", "1Q1oDloZ3pVboA384DNU4g9vL02ERqThL")
     save_config.set("Drive", "resource_key", "0-UEy66XMGR6YJCtE4ho850A")
@@ -202,6 +216,10 @@ with tab1:
     st.caption("All parameters below are automatically populated by Gemini Deep Thinking. You can fine-tune them before executing the pipeline.")
     
     v = st.session_state.strategy_version
+    if f"mr_v2_{v}" not in st.session_state:
+        st.session_state[f"mr_v2_{v}"] = max(st.session_state.max_results, 30)
+    if f"eav_{v}" not in st.session_state:
+        st.session_state[f"eav_{v}"] = getattr(st.session_state, "enable_agentic_video", True)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -211,7 +229,19 @@ with tab1:
         search_queries_val = st.text_area("Search Queries (semi-colon separated)", value=st.session_state.search_queries, key=f"sq_{v}")
         
     with col2:
-        max_results_val = st.slider("Max Videos to Discover", min_value=5, max_value=100, step=5, key=f"mr_v2_{v}", help="Select between 5 and 100 videos for full Share of Voice analysis.")
+        max_results_val = st.slider(
+            "Max Videos to Watch & Analyze (Top N)",
+            min_value=10,
+            max_value=100,
+            step=5,
+            key=f"mr_v2_{v}",
+            help="Watches at least the top 30 videos using Gemini Agentic Video Understanding."
+        )
+        enable_agentic_val = st.checkbox(
+            "Enable Agentic Video Understanding (Dynamic Timeline Scanning)",
+            key=f"eav_{v}",
+            help="Dynamically seeks frames, audio tracks, and transcripts on demand to reduce tokens by up to 88%."
+        )
         max_duration_val = st.slider("Max Video Duration (Minutes)", min_value=5, max_value=120, step=5, key=f"mvd_v2_{v}", help="Token Saver: Skip videos longer than this limit (e.g. 3-hour podcasts/live streams).")
         max_comments_val = st.slider("Max Comments per Video", min_value=10, max_value=50, step=10, key=f"mc_v2_{v}")
         
@@ -277,6 +307,7 @@ with tab1:
         st.session_state.category_theme = category_theme_val
         st.session_state.search_queries = search_queries_val
         st.session_state.max_results = max_results_val
+        st.session_state.enable_agentic_video = enable_agentic_val
         st.session_state.max_comments = max_comments_val
         st.session_state.max_video_duration = max_duration_val
         st.session_state.region_code = region_code_val
@@ -317,8 +348,8 @@ with tab1:
                 status_container.write("Step 2/5: Harvesting Customer Comments...")
             elif "STEP 3" in line or "SHARE OF VOICE" in line:
                 status_container.write("Step 3/5: Share of Voice & Brand Presence Analysis...")
-            elif "Stage 1/2" in line or "PARALLEL MULTIMODAL" in line:
-                status_container.write("Step 3/5 [Stage 1/2]: Processing Video Frames & Transcripts (Gemini Multimodal)...")
+            elif "Stage 1" in line or "Ingestão Multimodal" in line or "Extração Multimodal" in line or "PARALLEL MULTIMODAL" in line:
+                status_container.write("Step 3/5 [Stage 1/2]: Watching Videos with Gemini Agentic Video Understanding...")
             elif "Stage 2/2" in line or "Strategic Macro Synthesis" in line:
                 status_container.write("Step 3/5 [Stage 2/2]: Synthesizing Brand Share of Voice & Executive Report...")
             elif "Processing video" in line:

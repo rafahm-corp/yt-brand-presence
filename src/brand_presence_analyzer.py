@@ -57,6 +57,24 @@ class BrandPresenceAnalyzer:
         self.client = create_genai_client(config_path=self.config_path)
         print("SUCCESS: GenAI Client initialized.")
 
+    @staticmethod
+    def _df_to_markdown(df: pd.DataFrame, index: bool = False) -> str:
+        if df is None or df.empty:
+            return ""
+        try:
+            return df.to_markdown(index=index)
+        except Exception:
+            try:
+                headers = list(df.columns)
+                lines = ["| " + " | ".join(str(h) for h in headers) + " |"]
+                lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+                for _, row in df.iterrows():
+                    lines.append("| " + " | ".join(str(v).replace("\n", " ") for v in row.values) + " |")
+                return "\n".join(lines)
+            except Exception:
+                return df.to_string(index=index)
+
+
     def _load_environment_variables(self):
         load_dotenv(os.path.join(self.project_root, ".env"))
         self.google_api_key = (
@@ -78,7 +96,7 @@ class BrandPresenceAnalyzer:
         config = configparser.ConfigParser(interpolation=None)
         config.read(self.config_path)
         self.config = config
-        self.max_results = config.getint("Category", "max_results", fallback=config.getint("Crawler", "max_results", fallback=100))
+        self.max_results = max(config.getint("Category", "max_results", fallback=config.getint("Crawler", "max_results", fallback=30)), 30)
 
         # Target Brand resolution
         target_cfg = config.get("Target", "target_brand", fallback="").strip()
@@ -505,7 +523,7 @@ class BrandPresenceAnalyzer:
             mm_files = glob.glob(os.path.join(output_dir, "*_multimodal_analysis.csv"))
             app_files = glob.glob(os.path.join(output_dir, "*_brand_appearances_timeline.csv"))
 
-            max_v = getattr(self, "max_results", 100)
+            max_v = max(getattr(self, "max_results", 30), 30)
             if mm_files and os.path.exists(mm_files[0]):
                 cached_df = pd.read_csv(mm_files[0])
                 if len(cached_df) >= max_v and (videos_df is None or len(videos_df) <= len(cached_df)):
@@ -608,8 +626,8 @@ class BrandPresenceAnalyzer:
             total_comments=len(comments_df),
             videos_summary=video_summary_str[:16000],
             engagement_summary=engagement_summary_str[:12000],
-            sov_summary=sov_df.to_markdown(index=False),
-            creators_summary=creators_df.head(15).to_markdown(index=False) if not creators_df.empty else "Nenhum criador mapeado.",
+            sov_summary=self._df_to_markdown(sov_df),
+            creators_summary=self._df_to_markdown(creators_df.head(15)) if not creators_df.empty else "Nenhum criador mapeado.",
             comments_sample=comments_sample_str[:8000],
             output_language=self.output_language,
         )
@@ -639,16 +657,16 @@ class BrandPresenceAnalyzer:
             report_text
             + "\n\n## 📈 Apêndice: Tabelas Quantitativas de Inteligência Multimodal & SOV\n\n"
             + "### Share of Voice Integrado (%)\n"
-            + sov_df.to_markdown(index=False)
+            + self._df_to_markdown(sov_df)
         )
         if not drivers_df.empty:
-            full_report_md += "\n\n### Comparativo de Engajamento (Top vs Bottom Performers)\n" + drivers_df.to_markdown(index=False)
+            full_report_md += "\n\n### Comparativo de Engajamento (Top vs Bottom Performers)\n" + self._df_to_markdown(drivers_df)
         if not video_content_df.empty:
-            full_report_md += "\n\n### Vídeos Analisados na Categoria (Top 15)\n" + video_content_df.head(15).to_markdown(index=False)
+            full_report_md += "\n\n### Vídeos Analisados na Categoria (Top 15)\n" + self._df_to_markdown(video_content_df.head(15))
         if not creators_df.empty:
-            full_report_md += "\n\n### Top Criadores Mapeados na Categoria\n" + creators_df.head(15).to_markdown(index=False)
+            full_report_md += "\n\n### Top Criadores Mapeados na Categoria\n" + self._df_to_markdown(creators_df.head(15))
         if appearances_df is not None and not appearances_df.empty:
-            full_report_md += "\n\n### Linha do Tempo de Aparições de Marcas (Amostra Visual & Falada)\n" + appearances_df.head(20).to_markdown(index=False)
+            full_report_md += "\n\n### Linha do Tempo de Aparições de Marcas (Amostra Visual & Falada)\n" + self._df_to_markdown(appearances_df.head(20))
 
         final_md_file = os.path.join(output_dir, f"{safe_brand}_final_analysis_report.md")
         md_file = os.path.join(output_dir, f"{safe_brand}_brand_presence_report.md")

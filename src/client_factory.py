@@ -41,8 +41,8 @@ def get_active_flash_model(
     candidate_models = []
     if preferred_model:
         candidate_models.append(preferred_model)
-    for m in ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash"]:
-        if m not in candidate_models and not (("3.7" in m and "flash-latest" in candidate_models) or ("flash-latest" in m and any("3.7" in c for c in candidate_models))):
+    for m in ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]:
+        if m not in candidate_models:
             candidate_models.append(m)
 
     for model in candidate_models:
@@ -112,6 +112,10 @@ def get_multimodal_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     if config.has_option(section, "enable_visual_analysis"):
         enable_visual = config.getboolean(section, "enable_visual_analysis", fallback=True)
 
+    enable_agentic = True
+    if config.has_option(section, "enable_agentic_video"):
+        enable_agentic = config.getboolean(section, "enable_agentic_video", fallback=True)
+
     use_vertex = True
     if config.has_option(section, "use_vertex_ai"):
         use_vertex = config.getboolean(section, "use_vertex_ai", fallback=True)
@@ -125,6 +129,7 @@ def get_multimodal_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         "worker_delay_seconds": worker_delay,
         "max_video_duration_seconds": max_duration_sec,
         "enable_visual_analysis": enable_visual,
+        "enable_agentic_video": enable_agentic,
         "use_vertex_ai": use_vertex,
         "vertex_location": vertex_location,
     }
@@ -140,13 +145,13 @@ def get_model_names(config_path: Optional[str] = None) -> Dict[str, str]:
     elif os.path.exists("config.ini"):
         config.read("config.ini")
 
-    pro_model = "gemini-flash-latest"
-    flash_model = "gemini-flash-latest"
+    pro_model = "gemini-3.7-flash"
+    flash_model = "gemini-3.7-flash"
     fallback_model = "gemini-3.6-flash"
 
     if config.has_section("Analysis"):
-        pro_model = config.get("Analysis", "pro_model_name", fallback="gemini-flash-latest")
-        flash_model = config.get("Analysis", "flash_model_name", fallback="gemini-flash-latest")
+        pro_model = config.get("Analysis", "pro_model_name", fallback="gemini-3.7-flash")
+        flash_model = config.get("Analysis", "flash_model_name", fallback="gemini-3.7-flash")
         fallback_model = config.get("Analysis", "fallback_model_name", fallback="gemini-3.6-flash")
 
     return {
@@ -291,7 +296,7 @@ def generate_content_with_retry(
     Strictly avoids Pro models as requested.
     """
     # Define distinct Flash model tiers (avoiding redundant alias loops)
-    flash_hierarchy = ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash"]
+    flash_hierarchy = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]
     active_cached = _ACTIVE_MODEL_CACHE.get("active_flash_model")
 
     model_queue = []
@@ -301,7 +306,7 @@ def generate_content_with_retry(
         model_queue.append(model)
         
     for m in flash_hierarchy:
-        if m not in model_queue and not (("3.7" in m and any("flash-latest" in q for q in model_queue)) or ("flash-latest" in m and any("3.7" in q for q in model_queue))):
+        if m not in model_queue:
             model_queue.append(m)
             
     if fallback_model and fallback_model not in model_queue and "pro" not in fallback_model.lower():
