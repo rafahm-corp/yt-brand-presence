@@ -89,6 +89,8 @@ def run_pipeline(step: str = 'all', config_path: str = 'config.ini'):
 
 
 def main():
+    from retention import enforce_retention
+    enforce_retention(os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs"))
     print("\n" + "="*60)
     print(" 🚀 YOUTUBE BRAND PRESENCE & SHARE OF VOICE TRACKER ")
     print(" Target Brand Presence & Category Theme Intelligence ")
