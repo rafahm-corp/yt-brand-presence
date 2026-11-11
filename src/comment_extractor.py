@@ -159,7 +159,7 @@ class YouTubeCommentExtractor:
                         'titulo_video': video_title,
                         'url_video': video_url,
                         'texto_comentario': comment['textDisplay'],
-                        'autor': comment['authorDisplayName'],
+                        'is_channel_owner': (comment.get('authorChannelId') or {}).get('value') == item['snippet'].get('channelId'),
                         'publicado_em': comment['publishedAt'],
                     })
                     count += 1
