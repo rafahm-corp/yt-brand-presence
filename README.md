@@ -11,7 +11,7 @@ The **YouTube Brand Presence Tracker** is an end-to-end intelligence pipeline de
 - 🧠 **AI Deep Thinking Briefing Assistant**: Translates broad marketing briefings into targeted YouTube search queries, competitor maps, and negative exclusion keywords with real-time Google Search Grounding.
 - ⚡ **Auto-Optimized Gemini Flash Pipeline**: Automatically probes and selects the most responsive Flash model (`gemini-flash-latest` → `gemini-3.6-flash` → `gemini-3.5-flash`) for low-latency batch processing.
 - 🎯 **Organic Share of Voice (SOV) Analysis**: Measures spontaneous creator mentions, sentiment drivers, and competitor positioning across top relevant videos.
-- 🎬 **Multimodal Video Understanding**: Ingests video audio, visuals, transcripts, and comments via Gemini without requiring heavy video downloads.
+- 🎬 **Multimodal Video Understanding**: Analyzes video audio, visuals and comments via Gemini without requiring heavy video downloads.
 - 📊 **Multi-Format Strategic Outputs**: Automatically generates:
   - 🌐 **Interactive HTML Report** (Deep analytical dashboard)
   - 📝 **Markdown Executive Briefing**
@@ -30,7 +30,7 @@ yt-brand-presence-tracker/
 │   ├── brand_presence_analyzer.py # SOV and competitive intelligence engine
 │   ├── briefing_planner.py        # Gemini Deep Thinking strategy generator
 │   ├── client_factory.py          # Google GenAI client factory & health probe
-│   ├── crawler.py                 # YouTube API discovery & comment scraper
+│   ├── crawler.py                 # YouTube Data API discovery & comment collection
 │   ├── drive_uploader.py          # Google Drive / Shared Drive export utility
 │   ├── generate_slides_final.py   # PDF slide deck compiler
 │   ├── multimodal_extractor.py    # Video audio/visual extraction pipeline
